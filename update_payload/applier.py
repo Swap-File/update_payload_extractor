@@ -68,7 +68,6 @@ def _VerifySha256(file_obj, expected_hash, name, length=-1):
     PayloadError if computed hash doesn't match expected one, or if fails to
     read the specified length of data.
   """
-  
   hasher = hashlib.sha256()
   block_length = 1024 * 1024
   max_length = length if length >= 0 else sys.maxsize
@@ -207,7 +206,7 @@ class PayloadApplier(object):
   applying an update payload.
   """
 
-  def __init__(self, payload, bsdiff_in_place=True, bspatch_path="./bspatch",
+  def __init__(self, payload, ignore_block_size, bsdiff_in_place=True, bspatch_path="./bspatch",
                puffpatch_path="./puffin", truncate_to_expected_size=True):
     """Initialize the applier.
 
@@ -222,6 +221,7 @@ class PayloadApplier(object):
     """
     assert payload.is_init, 'uninitialized update payload'
     self.payload = payload
+    self.ignore_block_size = ignore_block_size
     self.block_size = payload.manifest.block_size
     self.minor_version = payload.manifest.minor_version
     self.bsdiff_in_place = bsdiff_in_place
@@ -272,7 +272,7 @@ class PayloadApplier(object):
              part_size))
 
       # Make sure that we have enough data to write.
-      if data_end >= data_length + block_size:
+      if not self.ignore_block_size and (data_end >= data_length + block_size):
         raise PayloadError(
             '%s: more dst blocks than data (even with padding)')
 
@@ -518,7 +518,8 @@ class PayloadApplier(object):
 
   def _ApplyToPartition(self, operations, part_name, base_name,
                         new_part_file_name, new_part_info,
-                        old_part_file_name=None, old_part_info=None):
+                        old_part_file_name=None, old_part_info=None,
+                        skip_hash=None):
     """Applies an update to a partition.
 
     Args:
@@ -529,16 +530,18 @@ class PayloadApplier(object):
       new_part_info: size and expected hash of dest partition
       old_part_file_name: file name of source partition (optional)
       old_part_info: size and expected hash of source partition (optional)
+      skip_hash: command line arg to skip hash checks
 
     Raises:
       PayloadError if anything goes wrong with the update.
     """
     # Do we have a source partition?
     if old_part_file_name:
-      # Verify the source partition.
-      # with open(old_part_file_name, 'rb') as old_part_file:
-      #   _VerifySha256(old_part_file, old_part_info.hash,
-      #                 'old ' + part_name, length=old_part_info.size)
+      # Verify the source partition if skip_hash arg was not given.
+      if not skip_hash:
+        with open(old_part_file_name, 'rb') as old_part_file:
+          _VerifySha256(old_part_file, old_part_info.hash,
+                        'old ' + part_name, length=old_part_info.size)
       new_part_file_mode = 'r+b'
       open(new_part_file_name, 'w').close()
 
@@ -564,10 +567,11 @@ class PayloadApplier(object):
           new_part_file.seek(new_part_info.size)
           new_part_file.truncate()
 
-    # Verify the resulting partition.
-    # with open(new_part_file_name, 'rb') as new_part_file:
-    #   _VerifySha256(new_part_file, new_part_info.hash,
-    #                 'new ' + part_name, length=new_part_info.size)
+    # Verify the resulting partition if skip_hash arg was not given.
+    if not skip_hash:
+      with open(new_part_file_name, 'rb') as new_part_file:
+        _VerifySha256(new_part_file, new_part_info.hash,
+                      'new ' + part_name, length=new_part_info.size)
 
   def Run(self, new_parts, old_parts=None):
     """Applier entry point, invoking all update operations.
