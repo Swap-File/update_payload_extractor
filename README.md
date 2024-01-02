@@ -8,7 +8,7 @@ pip3 install -r requirements.txt
 
 ### Full OTA
 
-- LD_LIBRARY_PATH=./lib64/ ./extract.py --output_dir output/ payload.bin --partitions boot
+- ./extract.py --output_dir output/ payload.bin --partitions boot
 - This will start to extract the images within the payload.bin file to the output folder you are in.
 
 ### Incremental OTA
